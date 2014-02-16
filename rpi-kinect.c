@@ -226,7 +226,7 @@ static int kinect_motor_open(struct inode *inode, struct file *file)
     mutex_lock(&disconnect_mutex);
 
     interface = usb_find_interface(&kinect_motor_driver, subminor);
-    if (! interface) {
+    if (!interface) {
         DBG_ERR("can't find device for minor %d", subminor);
         retval = -ENODEV;
         goto exit;
@@ -239,10 +239,10 @@ static int kinect_motor_open(struct inode *inode, struct file *file)
     }
 
     /* lock this device */
-    if (down_interruptible (&dev->sem)) {
+    if (down_interruptible(&dev->sem)) {
         DBG_ERR("sem down failed");
         retval = -ERESTARTSYS;
-        goto exit;
+        goto unlock_exit;
     }
 
     /* Increment our usage count for the device. */
@@ -250,27 +250,6 @@ static int kinect_motor_open(struct inode *inode, struct file *file)
     if (dev->open_count > 1)
         DBG_DEBUG("open_count = %d", dev->open_count);
 
-    /* /\* Initialize interrupt URB. *\/ */
-    /* usb_fill_int_urb(dev->int_in_urb, dev->udev, */
-    /*         usb_rcvintpipe(dev->udev, dev->int_in_endpoint->bEndpointAddress), */
-    /*         dev->int_in_buffer, */
-    /*         le16_to_cpu(dev->int_in_endpoint->wMaxPacketSize), */
-    /*         ml_int_in_callback, */
-    /*         dev, */
-    /*         dev->int_in_endpoint->bInterval); */
-
-    /* dev->int_in_running = 1; */
-    /* mb(); */
-
-    /* retval = usb_submit_urb(dev->int_in_urb, GFP_KERNEL); */
-    /* if (retval) { */
-    /*     DBG_ERR("submitting int urb failed (%d)", retval); */
-    /*     dev->int_in_running = 0; */
-    /*     --dev->open_count; */
-    /*     goto unlock_exit; */
-    /* } */
-
-    /* Save our object in the file's private structure. */
     file->private_data = dev;
     
 unlock_exit:
@@ -281,7 +260,7 @@ exit:
     return retval;
 }
 
-static int ml_release(struct inode *inode, struct file *file)
+static int kinect_motor_release(struct inode *inode, struct file *file)
 {
     struct usb_kinect_motor *dev = NULL;
     int retval = 0;
@@ -369,52 +348,31 @@ static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf
       goto unlock_exit;
     }
 
-    /* /\* FIXME: does this impose too much policy restrictions? *\/ */
-    /* if (! (cmd == ML_STOP || cmd == ML_UP || cmd == ML_DOWN || cmd == ML_LEFT */
-    /*             || cmd == ML_RIGHT || cmd == ML_UP_LEFT || cmd == ML_DOWN_LEFT */
-    /*             || cmd == ML_UP_RIGHT || cmd == ML_DOWN_RIGHT  */
-    /*             || cmd == ML_FIRE)) { */
-    /*     DBG_ERR("illegal command issued"); */
-    /*     retval = -0x2a;     /\* scnr *\/ */
-    /*     goto unlock_exit; */
-    /* } */
-
-    /* memset(&buf, 0, sizeof(buf)); */
-    /* buf[0] = cmd; */
-
-    /* /\* The interrupt-in-endpoint handler also modifies dev->command. *\/ */
-    /* spin_lock(&dev->cmd_spinlock); */
-    /* dev->command = cmd; */
-    /* spin_unlock(&dev->cmd_spinlock); */
-
+    dev->ctrl_dr->bRequestType = 0x40;
+    dev->ctrl_dr->bRequest = 0x31;
+    dev->ctrl_dr->wValue = cpu_to_le16(command);
+    dev->ctrl_dr->wIndex = cpu_to_le16(0x0000);
+    dev->ctrl_dr->wLength = cpu_to_le16(ML_CTRL_BUFFER_SIZE);
+    usb_fill_control_urb(dev->ctrl_urb, dev->udev,
+			 usb_sndctrlpipe(dev->udev, 0),
+			 (unsigned char *)dev->ctrl_dr,
+			 dev->ctrl_buffer,
+			 ML_CTRL_BUFFER_SIZE,
+			 ml_ctrl_callback,
+			 dev);
+    
     /* retval = usb_control_msg(dev->udev, */
-    /*         usb_sndctrlpipe(dev->udev, 0), */
-    /*         ML_CTRL_REQUEST, */
-    /*         ML_CTRL_REQEUST_TYPE, */
-    /*         ML_CTRL_VALUE, */
-    /*         ML_CTRL_INDEX, */
-    /*         &buf, */
-    /*         sizeof(buf), */
-    /*         HZ*5);   */
+    /* 			     usb_sndctrlpipe(dev->udev, 0), */
+    /* 			     0x31, */
+    /* 			     0x40, */
+    /* 			     cpu_to_le16(command), */
+    /* 			     cpu_to_le16(0x0000), */
+    /* 			     dev->ctrl_buffer, */
+    /* 			     ML_CTRL_BUFFER_SIZE, */
+    /* 			     0); */
 
-    /* if (retval < 0) { */
-    /*     DBG_ERR("usb_control_msg failed (%d)", retval); */
-    /*     goto unlock_exit; */
-    /* } */
-
-    /* /\* We should have written only one byte. *\/ */
-    /* retval = count;  */
-
-    retval = usb_control_msg(dev->udev,
-			     usb_sndctrlpipe(dev->udev, 0),
-			     0x31,
-			     0x40,
-			     cpu_to_le16(command),
-			     cpu_to_le16(0x0000),
-			     dev->ctrl_buffer,
-			     ML_CTRL_BUFFER_SIZE,
-			     0);
-    if (retval < 0) {
+    retval = usb_submit_urb(dev->ctrl_urb, GFP_ATOMIC);
+    if (retval) {
       DBG_ERR("usb_control_msg failed (%d)", retval);
       goto unlock_exit;
     }
@@ -431,7 +389,7 @@ static struct file_operations kinect_motor_fops = {
     .owner =    THIS_MODULE,
     .write =    kinect_motor_write,
     .open =     kinect_motor_open,
-    .release =  ml_release,
+    .release =  kinect_motor_release,
 };
 
 static struct usb_class_driver kinect_motor_class = {
@@ -443,15 +401,13 @@ static struct usb_class_driver kinect_motor_class = {
 static int kinect_motor_probe(struct usb_interface *interface, const struct usb_device_id *id)
 {
 
-  DBG_INFO("kinect_motor_probe");
-
-  struct usb_device *udev = interface_to_usbdev(interface);
+  struct usb_device *udev;
   struct usb_kinect_motor *dev = NULL;
-  struct usb_host_interface *iface_desc;
-  //  struct usb_endpoint_descriptor *endpoint;
-  //  int i, int_end_size;
-  int retval = -ENODEV;
-  
+  int retval, response;
+
+  udev = interface_to_usbdev(interface);
+  retval = -ENODEV;
+
   if (! udev) {
     DBG_ERR("udev is NULL");
     goto exit;
@@ -464,56 +420,14 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
     goto exit;
   }
   
-  //  dev->command = ML_STOP;
-  
-  
   init_MUTEX(&dev->sem);
   spin_lock_init(&dev->cmd_spinlock);
   
   dev->udev = udev;
   dev->interface = interface;
-  iface_desc = interface->cur_altsetting;
-
-  /*
-  
-    we're not dealing with interrupts for the motor control
-
-  // Set up interrupt endpoint information.
-  for (i = 0; i < iface_desc->desc.bNumEndpoints; ++i) {
-    endpoint = &iface_desc->endpoint[i].desc;
-    
-    if (((endpoint->bEndpointAddress & USB_ENDPOINT_DIR_MASK) == USB_DIR_IN)
-	&& ((endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==
-	    USB_ENDPOINT_XFER_INT)) 
-      dev->int_in_endpoint = endpoint;
-    
-  }
-  if (! dev->int_in_endpoint) {
-    DBG_ERR("could not find interrupt in endpoint");
-    goto error;
-  }
-  
-  // the buffer that receives data during the interrupt?
-  int_end_size = le16_to_cpu(dev->int_in_endpoint->wMaxPacketSize);
-  dev->int_in_buffer = kmalloc(int_end_size, GFP_KERNEL);
-  if (! dev->int_in_buffer) {
-    DBG_ERR("could not allocate int_in_buffer");
-    retval = -ENOMEM;
-    goto error;
-  }
-  
-  // creates a new urb for a USB driver to use for interrupts???
-  dev->int_in_urb = usb_alloc_urb(0, GFP_KERNEL);
-  if (! dev->int_in_urb) {
-    DBG_ERR("could not allocate int_in_urb");
-    retval = -ENOMEM;
-    goto error;
-  }
-  
-  */
 
   /* Set up the control URB. */
-  DBG_INFO("setting up the control URB");
+  DBG_DEBUG("setting up the control URB");
   dev->ctrl_urb = usb_alloc_urb(0, GFP_KERNEL);
   if (! dev->ctrl_urb) {
     DBG_ERR("could not allocate ctrl_urb");
@@ -522,7 +436,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
   }
   
   // the buffer that we would use when we want to send commands? -- 8 bytes
-  DBG_INFO("setting up the control buffer");
+  DBG_DEBUG("setting up the control buffer");
   dev->ctrl_buffer = kzalloc(ML_CTRL_BUFFER_SIZE, GFP_KERNEL);
   if (! dev->ctrl_buffer) {
     DBG_ERR("could not allocate ctrl_buffer");
@@ -530,52 +444,36 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
     goto error;
   }
   
-  // another buffer, but, not exactly sure what we want to use it for
-  /* Setup packet information?????? */
-  /* DBG_INFO("creating the packet that we are going to send"); */
-  /* dev->ctrl_dr = kmalloc(sizeof(struct usb_ctrlrequest), GFP_KERNEL); */
-  /* if (! dev->ctrl_dr) { */
-  /*   DBG_ERR("could not allocate usb_ctrlrequest"); */
-  /*   retval = -ENOMEM; */
-  /*   goto error; */
-  /* } */
-  /* dev->ctrl_dr->bRequestType = 0xC0; */
-  /* dev->ctrl_dr->bRequest = 0x10; */
-  /* dev->ctrl_dr->wValue = cpu_to_le16(0x0000); */
-  /* dev->ctrl_dr->wIndex = cpu_to_le16(0x0000); */
-  /* dev->ctrl_dr->wLength = cpu_to_le16(0x0001); */
-  
-  /* usb_fill_control_urb(dev->ctrl_urb, dev->udev, */
-  /* 		       usb_sndctrlpipe(dev->udev, 0), */
-  /* 		       (unsigned char *)dev->ctrl_dr, */
-  /* 		       dev->ctrl_buffer, */
-  /* 		       ML_CTRL_BUFFER_SIZE, */
-  /* 		       ml_ctrl_callback, */
-  /* 		       dev); */
+  dev->ctrl_dr = kmalloc(sizeof(struct usb_ctrlrequest), GFP_KERNEL);
+  if (! dev->ctrl_dr) {
+    DBG_ERR("could not allocate usb_ctrlrequest");
+    retval = -ENOMEM;
+    goto error;
+  }
 
-  // do a synchronous call to transmit to the driver
-  DBG_INFO("calling usb_control_msg");
-  int response = usb_control_msg(dev->udev,
-				 usb_rcvctrlpipe(dev->udev, 0),
-				 0x10,
-				 0xC0,
-				 cpu_to_le16(0x0000),
-				 cpu_to_le16(0x0000),
-				 dev->ctrl_buffer,
-				 ML_CTRL_BUFFER_SIZE,
-				 0);
+// do a synchronous call to transmit to the driver
+  DBG_DEBUG("calling usb_control_msg");
+  response = usb_control_msg(dev->udev,
+			     usb_rcvctrlpipe(dev->udev, 0),
+			     0x10,
+			     0xC0,
+			     cpu_to_le16(0x0000),
+			     cpu_to_le16(0x0000),
+			     dev->ctrl_buffer,
+			     ML_CTRL_BUFFER_SIZE,
+			     0);
   if (response < 0) {
     DBG_ERR("calling usb_control_msg = %d", response);
     goto exit;
   }
-  DBG_INFO("received %d bytes from usb_control_msg", response);
-  DBG_INFO("received %d", dev->ctrl_buffer[0]);
+  DBG_DEBUG("received %d bytes from usb_control_msg", response);
+  DBG_DEBUG("received %d", dev->ctrl_buffer[0]);
   if (dev->ctrl_buffer[0] != 0x22) {
     DBG_ERR("did not receive the correct response from the kinect");
-    goto exit;
+    goto error;
   }
 
-  DBG_INFO("moving motor to zero position");
+  DBG_DEBUG("moving motor to zero position");
   response = usb_control_msg(dev->udev,
 			     usb_sndctrlpipe(dev->udev, 0),
 			     0x31,
@@ -590,14 +488,6 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
     goto exit;
   }
 			     
-  /* /\* Retrieve a serial. *\/ */
-  /* if (! usb_string(udev, udev->descriptor.iSerialNumber, dev->serial_number, */
-  /* 		   sizeof(dev->serial_number))) { */
-  /*   DBG_ERR("could not retrieve serial number"); */
-  /*   goto error; */
-  /* } */
-  /* DBG_INFO("kinect motor serial number = %s", dev->serial_number); */
-  
   /* Save our data pointer in this interface device. */
   usb_set_intfdata(interface, dev);
   
@@ -611,8 +501,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
   
   dev->minor = interface->minor;
   
-  DBG_INFO("kinect motor now attached to /dev/kinect-motor%d",
- 	   interface->minor - ML_MINOR_BASE);
+  DBG_INFO("kinect motor now attached to /dev/kinect-motor%d", interface->minor - ML_MINOR_BASE);
   
  exit:
   return retval;
