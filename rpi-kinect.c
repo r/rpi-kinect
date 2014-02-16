@@ -83,7 +83,7 @@ MODULE_PARM_DESC(debug_trace, "enable function tracing");
 
 /* Prevent races between open() and disconnect */
 static DEFINE_MUTEX(disconnect_mutex);
-static struct usb_driver ml_driver;
+static struct usb_driver kinect_motor_driver;
 
 static inline void ml_debug_data(const char *function, int size,
         const unsigned char *data)
@@ -214,7 +214,7 @@ resubmit:
 }
 
 
-static int ml_open(struct inode *inode, struct file *file)
+static int kinect_motor_open(struct inode *inode, struct file *file)
 {
     struct usb_kinect_motor *dev = NULL;
     struct usb_interface *interface;
@@ -225,7 +225,7 @@ static int ml_open(struct inode *inode, struct file *file)
 
     mutex_lock(&disconnect_mutex);
 
-    interface = usb_find_interface(&ml_driver, subminor);
+    interface = usb_find_interface(&kinect_motor_driver, subminor);
     if (! interface) {
         DBG_ERR("can't find device for minor %d", subminor);
         retval = -ENODEV;
@@ -250,25 +250,25 @@ static int ml_open(struct inode *inode, struct file *file)
     if (dev->open_count > 1)
         DBG_DEBUG("open_count = %d", dev->open_count);
 
-    /* Initialize interrupt URB. */
-    usb_fill_int_urb(dev->int_in_urb, dev->udev,
-            usb_rcvintpipe(dev->udev, dev->int_in_endpoint->bEndpointAddress),
-            dev->int_in_buffer,
-            le16_to_cpu(dev->int_in_endpoint->wMaxPacketSize),
-            ml_int_in_callback,
-            dev,
-            dev->int_in_endpoint->bInterval);
+    /* /\* Initialize interrupt URB. *\/ */
+    /* usb_fill_int_urb(dev->int_in_urb, dev->udev, */
+    /*         usb_rcvintpipe(dev->udev, dev->int_in_endpoint->bEndpointAddress), */
+    /*         dev->int_in_buffer, */
+    /*         le16_to_cpu(dev->int_in_endpoint->wMaxPacketSize), */
+    /*         ml_int_in_callback, */
+    /*         dev, */
+    /*         dev->int_in_endpoint->bInterval); */
 
-    dev->int_in_running = 1;
-    mb();
+    /* dev->int_in_running = 1; */
+    /* mb(); */
 
-    retval = usb_submit_urb(dev->int_in_urb, GFP_KERNEL);
-    if (retval) {
-        DBG_ERR("submitting int urb failed (%d)", retval);
-        dev->int_in_running = 0;
-        --dev->open_count;
-        goto unlock_exit;
-    }
+    /* retval = usb_submit_urb(dev->int_in_urb, GFP_KERNEL); */
+    /* if (retval) { */
+    /*     DBG_ERR("submitting int urb failed (%d)", retval); */
+    /*     dev->int_in_running = 0; */
+    /*     --dev->open_count; */
+    /*     goto unlock_exit; */
+    /* } */
 
     /* Save our object in the file's private structure. */
     file->private_data = dev;
@@ -326,8 +326,7 @@ exit:
     return retval;
 }
 
-static ssize_t ml_write(struct file *file, const char __user *user_buf, size_t
-        count, loff_t *ppos)
+static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
 {
     struct usb_kinect_motor *dev;
     int retval = 0;
@@ -362,41 +361,63 @@ static ssize_t ml_write(struct file *file, const char __user *user_buf, size_t
         goto unlock_exit;
     }
 
-    /* FIXME: does this impose too much policy restrictions? */
-    if (! (cmd == ML_STOP || cmd == ML_UP || cmd == ML_DOWN || cmd == ML_LEFT
-                || cmd == ML_RIGHT || cmd == ML_UP_LEFT || cmd == ML_DOWN_LEFT
-                || cmd == ML_UP_RIGHT || cmd == ML_DOWN_RIGHT 
-                || cmd == ML_FIRE)) {
-        DBG_ERR("illegal command issued");
-        retval = -0x2a;     /* scnr */
-        goto unlock_exit;
+    signed char command = (signed char)cmd;
+    DBG_INFO("received %d", command);
+    if ((command < -128) || (command > 128)) {
+      DBG_ERR("illegal range for motor movement");
+      retval = -0x2a; // not sure what this means
+      goto unlock_exit;
     }
 
-    memset(&buf, 0, sizeof(buf));
-    buf[0] = cmd;
+    /* /\* FIXME: does this impose too much policy restrictions? *\/ */
+    /* if (! (cmd == ML_STOP || cmd == ML_UP || cmd == ML_DOWN || cmd == ML_LEFT */
+    /*             || cmd == ML_RIGHT || cmd == ML_UP_LEFT || cmd == ML_DOWN_LEFT */
+    /*             || cmd == ML_UP_RIGHT || cmd == ML_DOWN_RIGHT  */
+    /*             || cmd == ML_FIRE)) { */
+    /*     DBG_ERR("illegal command issued"); */
+    /*     retval = -0x2a;     /\* scnr *\/ */
+    /*     goto unlock_exit; */
+    /* } */
 
-    /* The interrupt-in-endpoint handler also modifies dev->command. */
-    spin_lock(&dev->cmd_spinlock);
-    dev->command = cmd;
-    spin_unlock(&dev->cmd_spinlock);
+    /* memset(&buf, 0, sizeof(buf)); */
+    /* buf[0] = cmd; */
+
+    /* /\* The interrupt-in-endpoint handler also modifies dev->command. *\/ */
+    /* spin_lock(&dev->cmd_spinlock); */
+    /* dev->command = cmd; */
+    /* spin_unlock(&dev->cmd_spinlock); */
+
+    /* retval = usb_control_msg(dev->udev, */
+    /*         usb_sndctrlpipe(dev->udev, 0), */
+    /*         ML_CTRL_REQUEST, */
+    /*         ML_CTRL_REQEUST_TYPE, */
+    /*         ML_CTRL_VALUE, */
+    /*         ML_CTRL_INDEX, */
+    /*         &buf, */
+    /*         sizeof(buf), */
+    /*         HZ*5);   */
+
+    /* if (retval < 0) { */
+    /*     DBG_ERR("usb_control_msg failed (%d)", retval); */
+    /*     goto unlock_exit; */
+    /* } */
+
+    /* /\* We should have written only one byte. *\/ */
+    /* retval = count;  */
 
     retval = usb_control_msg(dev->udev,
-            usb_sndctrlpipe(dev->udev, 0),
-            ML_CTRL_REQUEST,
-            ML_CTRL_REQEUST_TYPE,
-            ML_CTRL_VALUE,
-            ML_CTRL_INDEX,
-            &buf,
-            sizeof(buf),
-            HZ*5);  
-
+			     usb_sndctrlpipe(dev->udev, 0),
+			     0x31,
+			     0x40,
+			     cpu_to_le16(command),
+			     cpu_to_le16(0x0000),
+			     dev->ctrl_buffer,
+			     ML_CTRL_BUFFER_SIZE,
+			     0);
     if (retval < 0) {
-        DBG_ERR("usb_control_msg failed (%d)", retval);
-        goto unlock_exit;
+      DBG_ERR("usb_control_msg failed (%d)", retval);
+      goto unlock_exit;
     }
-
-    /* We should have written only one byte. */
-    retval = count; 
 
 unlock_exit:
     up(&dev->sem);
@@ -406,16 +427,16 @@ exit:
 }
     
 
-static struct file_operations ml_fops = {
+static struct file_operations kinect_motor_fops = {
     .owner =    THIS_MODULE,
-    .write =    ml_write,
-    .open =     ml_open,
+    .write =    kinect_motor_write,
+    .open =     kinect_motor_open,
     .release =  ml_release,
 };
 
-static struct usb_class_driver ml_class = {
-    .name = "ml%d",
-    .fops = &ml_fops,
+static struct usb_class_driver kinect_motor_class = {
+    .name = "kinect-motor%d",
+    .fops = &kinect_motor_fops,
     .minor_base = ML_MINOR_BASE,
 };
 
@@ -554,7 +575,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
     goto exit;
   }
 
-  DBG_INFO("moving motor");
+  DBG_INFO("moving motor to zero position");
   response = usb_control_msg(dev->udev,
 			     usb_sndctrlpipe(dev->udev, 0),
 			     0x31,
@@ -569,29 +590,29 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
     goto exit;
   }
 			     
+  /* /\* Retrieve a serial. *\/ */
+  /* if (! usb_string(udev, udev->descriptor.iSerialNumber, dev->serial_number, */
+  /* 		   sizeof(dev->serial_number))) { */
+  /*   DBG_ERR("could not retrieve serial number"); */
+  /*   goto error; */
+  /* } */
+  /* DBG_INFO("kinect motor serial number = %s", dev->serial_number); */
   
- /*  /\* Retrieve a serial. *\/ */
- /*  if (! usb_string(udev, udev->descriptor.iSerialNumber, dev->serial_number, */
- /* 		   sizeof(dev->serial_number))) { */
- /*    DBG_ERR("could not retrieve serial number"); */
- /*    goto error; */
- /*  } */
+  /* Save our data pointer in this interface device. */
+  usb_set_intfdata(interface, dev);
   
- /*  /\* Save our data pointer in this interface device. *\/ */
- /*  usb_set_intfdata(interface, dev); */
+  /* We can register the device now, as it is ready. */
+  retval = usb_register_dev(interface, &kinect_motor_class);
+  if (retval) {
+    DBG_ERR("not able to get a minor for this device.");
+    usb_set_intfdata(interface, NULL);
+    goto error;
+  }
   
- /*  /\* We can register the device now, as it is ready. *\/ */
- /*  retval = usb_register_dev(interface, &ml_class); */
- /*  if (retval) { */
- /*    DBG_ERR("not able to get a minor for this device."); */
- /*    usb_set_intfdata(interface, NULL); */
- /*    goto error; */
- /*  } */
+  dev->minor = interface->minor;
   
- /*  dev->minor = interface->minor; */
-  
- /*  DBG_INFO("USB missile launcher now attached to /dev/ml%d",  */
- /* 	   interface->minor - ML_MINOR_BASE); */
+  DBG_INFO("kinect motor now attached to /dev/kinect-motor%d",
+ 	   interface->minor - ML_MINOR_BASE);
   
  exit:
   return retval;
@@ -617,7 +638,7 @@ static void ml_disconnect(struct usb_interface *interface)
     minor = dev->minor;
 
     /* Give back our minor. */
-    usb_deregister_dev(interface, &ml_class);
+    usb_deregister_dev(interface, &kinect_motor_class);
 
     /* If the device is not opened, then we clean up right now. */
     if (! dev->open_count) {
