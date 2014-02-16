@@ -143,76 +143,11 @@ static inline void ml_delete(struct usb_kinect_motor *dev)
     kfree(dev);
 }
 
-static void ml_ctrl_callback(struct urb *urb)
+static void kinect_motor_ctrl_callback(struct urb *urb)
 {
     struct usb_kinect_motor *dev = urb->context;
     dev->correction_required = 0;   /* TODO: do we need race protection? */
 }
-
-static void ml_int_in_callback(struct urb *urb)
-{
-    struct usb_kinect_motor *dev = urb->context;
-    int retval;
-
-    ml_debug_data(__FUNCTION__, urb->actual_length, urb->transfer_buffer);
-
-    if (urb->status) {
-        if (urb->status == -ENOENT ||
-                urb->status == -ECONNRESET ||
-                urb->status == -ESHUTDOWN) {
-            return;
-        } else {
-            DBG_ERR("non-zero urb status (%d)", urb->status);
-            goto resubmit; /* Maybe we can recover. */
-        }
-    }
-
-    if (urb->actual_length > 0) {
-        spin_lock(&dev->cmd_spinlock);
-
-        if (dev->int_in_buffer[0] & ML_MAX_UP && dev->command & ML_UP) {
-            dev->command &= ~ML_UP;
-            dev->correction_required = 1;
-        } else if (dev->int_in_buffer[0] & ML_MAX_DOWN && 
-                dev->command & ML_DOWN) {
-            dev->command &= ~ML_DOWN;
-            dev->correction_required = 1;
-        }
-
-        if (dev->int_in_buffer[1] & ML_MAX_LEFT && dev->command & ML_LEFT) {
-            dev->command &= ~ML_LEFT;
-            dev->correction_required = 1;
-        } else if (dev->int_in_buffer[1] & ML_MAX_RIGHT && 
-                dev->command & ML_RIGHT) {
-            dev->command &= ~ML_RIGHT;
-            dev->correction_required = 1;
-        }
-
-
-        if (dev->correction_required) {
-            dev->ctrl_buffer[0] = dev->command;
-            spin_unlock(&dev->cmd_spinlock);
-            retval = usb_submit_urb(dev->ctrl_urb, GFP_ATOMIC);
-            if (retval) {
-                DBG_ERR("submitting correction control URB failed (%d)",
-                        retval);
-            } 
-        } else {
-            spin_unlock(&dev->cmd_spinlock);
-        }
-    }
-
-resubmit:
-    /* Resubmit if we're still running. */
-    if (dev->int_in_running && dev->udev) {
-        retval = usb_submit_urb(dev->int_in_urb, GFP_ATOMIC);
-        if (retval) {
-            DBG_ERR("resubmitting urb failed (%d)", retval);
-            dev->int_in_running = 0;
-        }
-    }
-}
-
 
 static int kinect_motor_open(struct inode *inode, struct file *file)
 {
@@ -309,7 +244,6 @@ static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf
 {
     struct usb_kinect_motor *dev;
     int retval = 0;
-    u8 buf[8];
     __u8 cmd = ML_STOP;
 
     dev = file->private_data;
@@ -358,18 +292,8 @@ static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf
 			 (unsigned char *)dev->ctrl_dr,
 			 dev->ctrl_buffer,
 			 ML_CTRL_BUFFER_SIZE,
-			 ml_ctrl_callback,
+			 kinect_motor_ctrl_callback,
 			 dev);
-    
-    /* retval = usb_control_msg(dev->udev, */
-    /* 			     usb_sndctrlpipe(dev->udev, 0), */
-    /* 			     0x31, */
-    /* 			     0x40, */
-    /* 			     cpu_to_le16(command), */
-    /* 			     cpu_to_le16(0x0000), */
-    /* 			     dev->ctrl_buffer, */
-    /* 			     ML_CTRL_BUFFER_SIZE, */
-    /* 			     0); */
 
     retval = usb_submit_urb(dev->ctrl_urb, GFP_ATOMIC);
     if (retval) {
