@@ -275,7 +275,7 @@ static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf
     }
 
     signed char command = (signed char)cmd;
-    DBG_INFO("received %d", command);
+    DBG_DEBUG("received %d", command);
     if ((command < -128) || (command > 128)) {
       DBG_ERR("illegal range for motor movement");
       retval = -0x2a; // not sure what this means
@@ -436,7 +436,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
  /*  return retval; */
 }
 
-static void ml_disconnect(struct usb_interface *interface)
+static void kinect_motor_disconnect(struct usb_interface *interface)
 {
     struct usb_kinect_motor *dev;
     int minor;
@@ -464,15 +464,14 @@ static void ml_disconnect(struct usb_interface *interface)
 
     mutex_unlock(&disconnect_mutex);
 
-    DBG_INFO("USB missile launcher /dev/ml%d now disconnected", 
-            minor - ML_MINOR_BASE);
+    DBG_INFO("kinect motor /dev/kinect-motor%d now disconnected", minor - ML_MINOR_BASE);
 }
 
 static struct usb_driver kinect_motor_driver = {
   .name = "kinect_motor",
   .id_table = kinect_motor_table,
   .probe = kinect_motor_probe,
-  .disconnect = ml_disconnect,
+  .disconnect = kinect_motor_disconnect,
 };
 
 static int __init usb_kinect_init(void)
