@@ -14,32 +14,16 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  signed char cmd = 0;
-  int direction = 1;
+  signed char cmds[] = { 0, 45, 0, -45 };
+  int c1, c2;
   int retval;
-  while (1) {
-    retval = write(fd, &cmd, 1);
-    if (retval < 0)
-      fprintf(stderr, "could not send command, %d\n", retval);
-    if ((cmd == 0) && (direction == 1))
-      cmd = 45;
-    else if (cmd == 45) {
-      cmd = 0;
-      direction = -1;
-    } else if ((cmd == 0) && (direction == -1)) 
-      cmd = -45;
-    else {
-      cmd = 0;
-      direction = 1;
+  for (c1=0;c1<=3;c1++) {
+    for (c2=0;c2<=3;c2++) {
+      retval = write(fd, &(cmds[c2]), 1);
+      if (retval < 0)
+	fprintf(stderr, "could not send command, %d\n", retval);
+      sleep(1);
     }
-    sleep(1);
-    printf("cmd = %d\n", cmd);
   }
-
-
-  /* int cmd = 45; */
-  /* int retval = write(fd, &cmd, 1); */
-  /* if (retval < 0) */
-  /*   fprintf(stderr, "could not send command, %d\n", retval); */
   close(fd);
 }
