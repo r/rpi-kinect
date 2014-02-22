@@ -17,7 +17,8 @@
 #define KINECT_MOTOR_VENDOR_ID    0x045e
 #define KINECT_MOTOR_PRODUCT_ID   0x02b0
 
-#define ML_CTRL_BUFFER_SIZE     8
+#define KINECT_MOTOR_CTRL_BUFFER_SIZE     8
+
 #define ML_CTRL_REQEUST_TYPE    0x21
 #define ML_CTRL_REQUEST         0x09
 #define ML_CTRL_VALUE           0x0 
@@ -286,12 +287,12 @@ static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf
     dev->ctrl_dr->bRequest = 0x31;
     dev->ctrl_dr->wValue = cpu_to_le16(command);
     dev->ctrl_dr->wIndex = cpu_to_le16(0x0000);
-    dev->ctrl_dr->wLength = cpu_to_le16(ML_CTRL_BUFFER_SIZE);
+    dev->ctrl_dr->wLength = cpu_to_le16(KINECT_MOTOR_CTRL_BUFFER_SIZE);
     usb_fill_control_urb(dev->ctrl_urb, dev->udev,
 			 usb_sndctrlpipe(dev->udev, 0),
 			 (unsigned char *)dev->ctrl_dr,
 			 dev->ctrl_buffer,
-			 ML_CTRL_BUFFER_SIZE,
+			 KINECT_MOTOR_CTRL_BUFFER_SIZE,
 			 kinect_motor_ctrl_callback,
 			 dev);
 
@@ -361,7 +362,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
   
   // the buffer that we would use when we want to send commands? -- 8 bytes
   DBG_DEBUG("setting up the control buffer");
-  dev->ctrl_buffer = kzalloc(ML_CTRL_BUFFER_SIZE, GFP_KERNEL);
+  dev->ctrl_buffer = kzalloc(KINECT_MOTOR_CTRL_BUFFER_SIZE, GFP_KERNEL);
   if (! dev->ctrl_buffer) {
     DBG_ERR("could not allocate ctrl_buffer");
     retval = -ENOMEM;
@@ -384,7 +385,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
 			     cpu_to_le16(0x0000),
 			     cpu_to_le16(0x0000),
 			     dev->ctrl_buffer,
-			     ML_CTRL_BUFFER_SIZE,
+			     KINECT_MOTOR_CTRL_BUFFER_SIZE,
 			     0);
   if (response < 0) {
     DBG_ERR("calling usb_control_msg = %d", response);
@@ -405,7 +406,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
 			     cpu_to_le16(0x0000),
 			     cpu_to_le16(0x0000),
 			     dev->ctrl_buffer,
-			     ML_CTRL_BUFFER_SIZE,
+			     KINECT_MOTOR_CTRL_BUFFER_SIZE,
 			     0);
   if (response < 0) {
     DBG_ERR("calling usb_control_msg = %d", response);
