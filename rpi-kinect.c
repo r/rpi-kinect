@@ -58,20 +58,7 @@ MODULE_PARM_DESC(debug_trace, "enable function tracing");
 static DEFINE_MUTEX(disconnect_mutex);
 static struct usb_driver kinect_motor_driver;
 
-static inline void ml_debug_data(const char *function, int size,
-        const unsigned char *data)
-{
-    int i;
-
-    if ((debug_level & DEBUG_LEVEL_DEBUG) == DEBUG_LEVEL_DEBUG) {
-        printk(KERN_DEBUG "[debug] %s: length = %d, data = ", function, size);
-        for (i = 0; i < size; ++i)
-            printk("%.2x ", data[i]);
-        printk("\n");
-    }
-}
-
-static void ml_abort_transfers(struct usb_kinect_motor *dev)
+static void kinect_motor_abort_transfers(struct usb_kinect_motor *dev)
 {
     if (! dev) { 
         DBG_ERR("dev is NULL");
@@ -94,7 +81,7 @@ static void ml_abort_transfers(struct usb_kinect_motor *dev)
 
 static inline void ml_delete(struct usb_kinect_motor *dev)
 {
-    ml_abort_transfers(dev);
+    kinect_motor_abort_transfers(dev);
 
     kfree(dev->ctrl_buffer);
     kfree(dev->ctrl_dr);
@@ -187,7 +174,7 @@ static int kinect_motor_release(struct inode *inode, struct file *file)
     if (dev->open_count > 1)
         DBG_DEBUG("open_count = %d", dev->open_count);
 
-    ml_abort_transfers(dev);
+    kinect_motor_abort_transfers(dev);
     --dev->open_count;
 
 unlock_exit:
