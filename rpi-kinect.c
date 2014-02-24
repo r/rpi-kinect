@@ -93,6 +93,12 @@ static void kinect_motor_ctrl_callback(struct urb *urb)
     struct usb_kinect_motor *dev = urb->context;
 }
 
+/*! \brief called when the /dev/kinect-motor%d is opened.
+ *
+ * \param inode the inode of the file 
+ * \param file the file object
+ * \return 0 if all went well
+ */
 static int kinect_motor_open(struct inode *inode, struct file *file)
 {
     struct usb_kinect_motor *dev = NULL;
@@ -102,15 +108,20 @@ static int kinect_motor_open(struct inode *inode, struct file *file)
 
     subminor = iminor(inode);
 
+    // synchronize calls between kinect_motor_open and kinect_motor_disconnect
     mutex_lock(&disconnect_mutex);
 
+    // find the interface that is registered to this subminor
+    // number. error out if we can't find one.
     interface = usb_find_interface(&kinect_motor_driver, subminor);
-    if (!interface) {
+    if (! interface) {
         DBG_ERR("can't find device for minor %d", subminor);
         retval = -ENODEV;
         goto exit;
     }
 
+    // find the usb_kinect_motor structure that we have associated
+    // with this interface. error out if we can't find one.
     dev = usb_get_intfdata(interface);
     if (! dev) {
         retval = -ENODEV;
