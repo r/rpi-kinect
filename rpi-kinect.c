@@ -24,22 +24,6 @@
 #define ML_CTRL_VALUE           0x0 
 #define ML_CTRL_INDEX           0x0
 
-#define ML_STOP         0x00
-#define ML_UP           0x01
-#define ML_DOWN         0x02
-#define ML_LEFT         0x04
-#define ML_RIGHT        0x08
-#define ML_UP_LEFT      (ML_UP | ML_LEFT)
-#define ML_DOWN_LEFT    (ML_DOWN | ML_LEFT)
-#define ML_UP_RIGHT     (ML_UP | ML_RIGHT)
-#define ML_DOWN_RIGHT   (ML_DOWN | ML_RIGHT)
-#define ML_FIRE         0x10
-
-#define ML_MAX_UP       0x80        /* 80 00 00 00 00 00 00 00 */
-#define ML_MAX_DOWN     0x40        /* 40 00 00 00 00 00 00 00 */
-#define ML_MAX_LEFT     0x04        /* 00 04 00 00 00 00 00 00 */
-#define ML_MAX_RIGHT    0x08        /* 00 08 00 00 00 00 00 00 */
-
 #ifdef CONFIG_USB_DYNAMIC_MINORS
 #define ML_MINOR_BASE   0
 #else
@@ -245,7 +229,7 @@ static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf
 {
     struct usb_kinect_motor *dev;
     int retval = 0;
-    __u8 cmd = ML_STOP;
+    __u8 cmd;
 
     dev = file->private_data;
 
