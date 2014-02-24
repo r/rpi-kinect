@@ -19,11 +19,16 @@
 
 #define KINECT_MOTOR_CTRL_BUFFER_SIZE     8
 
+#ifdef CONFIG_USB_DYNAMIC_MINORS
+#define ML_MINOR_BASE   0
+#else
+#define ML_MINOR_BASE   96
+#endif
+
 struct usb_kinect_motor {
     struct usb_device   *udev;
     struct usb_interface *interface;
     unsigned char       minor;
-    char                serial_number[8];
 
     int                 open_count;     /* Open count for this port */
     struct              semaphore sem;  /* Locks this structure */
