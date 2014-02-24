@@ -34,15 +34,9 @@ struct usb_kinect_motor {
     struct              semaphore sem;  /* Locks this structure */
     spinlock_t          cmd_spinlock;   /* locks dev->command */
 
-    char                *int_in_buffer;
-    struct usb_endpoint_descriptor *int_in_endpoint;
-    struct urb          *int_in_urb;
-    int                 int_in_running;
-
     char                *ctrl_buffer;   /* 8 byte buffer for the control msg */
     struct urb          *ctrl_urb;
     struct usb_ctrlrequest *ctrl_dr;    /* Setup packet information */
-    int                 correction_required;
 
     __u8                command;        /* Last issued command */
 };
@@ -94,14 +88,6 @@ static void ml_abort_transfers(struct usb_kinect_motor *dev)
         return;
     }
 
-    /* Shutdown transfer */
-    if (dev->int_in_running) {
-        dev->int_in_running = 0;
-        mb();
-        if (dev->int_in_urb)
-            usb_kill_urb(dev->int_in_urb);
-    }
-
     if (dev->ctrl_urb)
         usb_kill_urb(dev->ctrl_urb);
 }
@@ -110,13 +96,6 @@ static inline void ml_delete(struct usb_kinect_motor *dev)
 {
     ml_abort_transfers(dev);
 
-    /* Free data structures. */
-    if (dev->int_in_urb)
-        usb_free_urb(dev->int_in_urb);
-    if (dev->ctrl_urb)
-        usb_free_urb(dev->ctrl_urb);
-
-    kfree(dev->int_in_buffer);
     kfree(dev->ctrl_buffer);
     kfree(dev->ctrl_dr);
     kfree(dev);
@@ -125,7 +104,6 @@ static inline void ml_delete(struct usb_kinect_motor *dev)
 static void kinect_motor_ctrl_callback(struct urb *urb)
 {
     struct usb_kinect_motor *dev = urb->context;
-    dev->correction_required = 0;   /* TODO: do we need race protection? */
 }
 
 static int kinect_motor_open(struct inode *inode, struct file *file)
