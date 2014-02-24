@@ -79,7 +79,7 @@ static void kinect_motor_abort_transfers(struct usb_kinect_motor *dev)
         usb_kill_urb(dev->ctrl_urb);
 }
 
-static inline void ml_delete(struct usb_kinect_motor *dev)
+static inline void kinect_motor_delete(struct usb_kinect_motor *dev)
 {
     kinect_motor_abort_transfers(dev);
 
@@ -166,8 +166,8 @@ static int kinect_motor_release(struct inode *inode, struct file *file)
 
     if (! dev->udev) {
         DBG_DEBUG("device unplugged before the file was released");
-        up (&dev->sem); /* Unlock here as ml_delete frees dev. */
-        ml_delete(dev);
+        up (&dev->sem); /* Unlock here as kinect_motor_delete frees dev. */
+        kinect_motor_delete(dev);
         goto exit;
     }
 
@@ -376,7 +376,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
   
  error:
   return -1;
- /*  ml_delete(dev); */
+ /*  kinect_motor_delete(dev); */
  /*  return retval; */
 }
 
@@ -400,7 +400,7 @@ static void kinect_motor_disconnect(struct usb_interface *interface)
     /* If the device is not opened, then we clean up right now. */
     if (! dev->open_count) {
         up(&dev->sem);
-        ml_delete(dev);
+        kinect_motor_delete(dev);
     } else {
         dev->udev = NULL;
         up(&dev->sem);
