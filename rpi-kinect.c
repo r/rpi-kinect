@@ -19,17 +19,6 @@
 
 #define KINECT_MOTOR_CTRL_BUFFER_SIZE     8
 
-#define ML_CTRL_REQEUST_TYPE    0x21
-#define ML_CTRL_REQUEST         0x09
-#define ML_CTRL_VALUE           0x0 
-#define ML_CTRL_INDEX           0x0
-
-#ifdef CONFIG_USB_DYNAMIC_MINORS
-#define ML_MINOR_BASE   0
-#else
-#define ML_MINOR_BASE   96
-#endif
-
 struct usb_kinect_motor {
     struct usb_device   *udev;
     struct usb_interface *interface;
