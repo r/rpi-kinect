@@ -17,7 +17,7 @@
 #define KINECT_MOTOR_VENDOR_ID    0x045e
 #define KINECT_MOTOR_PRODUCT_ID   0x02b0
 
-#define KINECT_MOTOR_CTRL_BUFFER_SIZE     8
+#define KINECT_MOTOR_CTRL_BUFFER_SIZE     10
 
 #ifdef CONFIG_USB_DYNAMIC_MINORS
 #define ML_MINOR_BASE   0
@@ -93,7 +93,7 @@ static void kinect_motor_ctrl_callback(struct urb *urb)
     struct usb_kinect_motor *dev = urb->context;
 }
 
-/*! \brief called when the /dev/kinect-motor%d is opened.
+/*! \brief called when the /dev/kinect%d is opened.
  *
  * \param inode the inode of the file 
  * \param file the file object
@@ -195,7 +195,59 @@ exit:
     return retval;
 }
 
-/*! \brief called when the /dev/kinect-motor%d is written to.
+/*! \brief called when the /dev/kinect%d is read from
+ */
+static ssize_t kinect_sensors_read(struct file *file,
+				   char __user *user_buf, size_t count,
+				   loff_t *ppos)
+{
+  struct usb_kinect_motor *dev;
+  int retval = 0, response;
+  
+  dev = file->private_data;
+    
+  /* Lock this object. */
+  if (down_interruptible(&dev->sem)) {
+    retval = -ERESTARTSYS;
+    goto exit;
+  }
+
+  /* Verify that the device wasn't unplugged. */
+  if (! dev->udev) {
+    retval = -ENODEV;
+    DBG_ERR("No device or device unplugged (%d)", retval);
+    goto unlock_exit;
+  }
+
+  // do a synchronous call to transmit to the driver
+  DBG_DEBUG("calling usb_control_msg");
+  response = usb_control_msg(dev->udev,
+			     usb_rcvctrlpipe(dev->udev, 0),
+			     0x32,
+			     0xC0,
+			     cpu_to_le16(0x0000),
+			     cpu_to_le16(0x0000),
+			     dev->ctrl_buffer,
+			     KINECT_MOTOR_CTRL_BUFFER_SIZE,
+			     0);
+  if (response < 0) {
+    DBG_ERR("calling usb_control_msg = %d", response);
+    goto exit;
+  }
+
+  if (copy_to_user(user_buf, dev->ctrl_buffer, count)) {
+    retval = -EFAULT;
+    goto unlock_exit;
+  }
+
+unlock_exit:
+    up(&dev->sem);
+
+exit: 
+    return retval;
+}
+
+/*! \brief called when the /dev/kinect%d is written to.
  *
  * support writes of -128 to 128, one byte at a time -- this
  * translates to movement by the kinect itself. no matter how much is
@@ -270,13 +322,14 @@ exit:
 
 static struct file_operations kinect_motor_fops = {
     .owner =    THIS_MODULE,
+    .read =     kinect_sensors_read,
     .write =    kinect_motor_write,
     .open =     kinect_motor_open,
     .release =  kinect_motor_release,
 };
 
 static struct usb_class_driver kinect_motor_class = {
-    .name = "kinect-motor%d",
+    .name = "kinect%d",
     .fops = &kinect_motor_fops,
     .minor_base = ML_MINOR_BASE,
 };
@@ -318,7 +371,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
     goto error;
   }
   
-  // the buffer that we would use when we want to send commands? -- 8 bytes
+  // the buffer that we would use when we want to send commands
   DBG_DEBUG("setting up the control buffer");
   dev->ctrl_buffer = kzalloc(KINECT_MOTOR_CTRL_BUFFER_SIZE, GFP_KERNEL);
   if (! dev->ctrl_buffer) {
@@ -334,7 +387,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
     goto error;
   }
 
-// do a synchronous call to transmit to the driver
+  // do a synchronous call to transmit to the driver
   DBG_DEBUG("calling usb_control_msg");
   response = usb_control_msg(dev->udev,
 			     usb_rcvctrlpipe(dev->udev, 0),
@@ -384,7 +437,7 @@ static int kinect_motor_probe(struct usb_interface *interface, const struct usb_
   
   dev->minor = interface->minor;
   
-  DBG_INFO("kinect motor now attached to /dev/kinect-motor%d", interface->minor - ML_MINOR_BASE);
+  DBG_INFO("kinect motor now attached to /dev/kinect%d", interface->minor - ML_MINOR_BASE);
   
  exit:
   return retval;
@@ -423,7 +476,7 @@ static void kinect_motor_disconnect(struct usb_interface *interface)
 
     mutex_unlock(&disconnect_mutex);
 
-    DBG_INFO("kinect motor /dev/kinect-motor%d now disconnected", minor - ML_MINOR_BASE);
+    DBG_INFO("kinect motor /dev/kinect%d now disconnected", minor - ML_MINOR_BASE);
 }
 
 static struct usb_driver kinect_motor_driver = {
