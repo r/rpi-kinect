@@ -1,5 +1,8 @@
 a simple kernel module to talk to the kinect from a raspberry pi  
-raffi krikorian <raffi.krikorian@gmail.com>
+raffi.krikorian@gmail.com
 
-this module, right now, only supports moving the kinect motor. it does
-not yet read from the camera.
+
+this module is incredibly simple. all it supports is moving the kinect
+motor (writing to /dev/kinect%d), reading the motor status, and
+reading the accelerometers (reading from /dev/kinect%d).
+
