@@ -10,6 +10,7 @@
 
 #include "debug.h" 
 #include "semaphore.h"
+#include "rpi-kinect.h"
 
 /* 
  * kinect motor driver
@@ -235,7 +236,16 @@ static ssize_t kinect_sensors_read(struct file *file,
     goto exit;
   }
 
-  if (copy_to_user(user_buf, dev->ctrl_buffer, count)) {
+  // parse the results back into this structure
+  kinect_sensor_values sensor_values = {
+    .ux = ((uint16_t)(dev->ctrl_buffer)[2] << 8) | (dev->ctrl_buffer)[3],
+    .uy = ((uint16_t)(dev->ctrl_buffer)[4] << 8) | (dev->ctrl_buffer)[5],
+    .uz = ((uint16_t)(dev->ctrl_buffer)[6] << 8) | (dev->ctrl_buffer)[7],
+    .positive_angle_degrees = (uint8_t)(dev->ctrl_buffer)[8] / 2,
+    .status_code = (dev->ctrl_buffer)[9]
+  };
+  int amount_to_copy = count < sizeof(kinect_sensor_values) ? count : sizeof(kinect_sensor_values);
+  if (copy_to_user(user_buf, &sensor_values, amount_to_copy)) {
     retval = -EFAULT;
     goto unlock_exit;
   }

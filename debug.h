@@ -2,7 +2,7 @@
 #define DEBUG_LEVEL_INFO		0x0F
 #define DEBUG_LEVEL_WARN		0x07
 #define DEBUG_LEVEL_ERROR		0x03
-#define DEBUG_LEVEL_CRITICAL	0x01
+#define DEBUG_LEVEL_CRITICAL	        0x01
 
 #define DBG_DEBUG(fmt, args...) \
 if ((debug_level & DEBUG_LEVEL_DEBUG) == DEBUG_LEVEL_DEBUG) \

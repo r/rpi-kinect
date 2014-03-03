@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
+#include "rpi-kinect.h"
+
 #define DEFAULT_DEVICE "/dev/kinect0"
 
 int main(int argc, char *argv[])
@@ -16,7 +18,7 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  char buffer[10];
+  kinect_sensor_values sensor_values;
 
   signed char cmds[] = { 0, 45, 0, -45 };
   int c1, c2;
@@ -30,14 +32,12 @@ int main(int argc, char *argv[])
 	fprintf(stderr, "could not send command, %d\n", retval);
       printf("reading\n");
 
-      retval = read(fd, buffer, 10);
+      retval = read(fd, &sensor_values, sizeof(sensor_values));
       if (retval < 0)
 	fprintf(stderr, "could not read sensor data, %d\n", retval);
-      printf("positive_angle_degrees = %d\n", (int)buffer[8] / 2);
+      printf("positive_angle_degrees = %d\n", sensor_values.positive_angle_degrees);
       printf("accelerometer values. ux = %d, uy = %d, uz = %d\n",
-	     ((uint16_t)buffer[2] << 8) | buffer[3],
-	     ((uint16_t)buffer[4] << 8) | buffer[5],
-	     ((uint16_t)buffer[6] << 8) | buffer[7]);
+	     sensor_values.ux, sensor_values.uy, sensor_values.uz);
 
       sleep(1);
     }
