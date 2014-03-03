@@ -195,7 +195,20 @@ exit:
     return retval;
 }
 
-static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
+/*! \brief called when the /dev/kinect-motor%d is written to.
+ *
+ * support writes of -128 to 128, one byte at a time -- this
+ * translates to movement by the kinect itself. no matter how much is
+ * written, we only look at the first byte.
+ *
+ * \param file the file object
+ * \param user_buf the buffer containing what we want to write
+ * \param count the number of bytes to write
+ * \return 0 if all went well
+ */
+static ssize_t kinect_motor_write(struct file *file, 
+				  const char __user *user_buf, size_t count, 
+				  loff_t *ppos)
 {
     struct usb_kinect_motor *dev;
     int retval = 0;
@@ -219,10 +232,7 @@ static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf
     /* Verify that we actually have some data to write. */
     if (count == 0)
         goto unlock_exit;
-
-    /* We only accept one-byte writes. */
-    if (count != 1)
-        count = 1;
+    count = 1;
 
     if (copy_from_user(&cmd, user_buf, count)) {
         retval = -EFAULT;
@@ -237,20 +247,15 @@ static ssize_t kinect_motor_write(struct file *file, const char __user *user_buf
       goto unlock_exit;
     }
 
-    dev->ctrl_dr->bRequestType = 0x40;
-    dev->ctrl_dr->bRequest = 0x31;
-    dev->ctrl_dr->wValue = cpu_to_le16(command);
-    dev->ctrl_dr->wIndex = cpu_to_le16(0x0000);
-    dev->ctrl_dr->wLength = cpu_to_le16(KINECT_MOTOR_CTRL_BUFFER_SIZE);
-    usb_fill_control_urb(dev->ctrl_urb, dev->udev,
-			 usb_sndctrlpipe(dev->udev, 0),
-			 (unsigned char *)dev->ctrl_dr,
-			 dev->ctrl_buffer,
-			 KINECT_MOTOR_CTRL_BUFFER_SIZE,
-			 kinect_motor_ctrl_callback,
-			 dev);
-
-    retval = usb_submit_urb(dev->ctrl_urb, GFP_ATOMIC);
+    retval = usb_control_msg(dev->udev,
+			     usb_sndctrlpipe(dev->udev, 0),
+			     0x31,
+			     0x40,
+			     cpu_to_le16(command),
+			     cpu_to_le16(0x0000),  
+			     dev->ctrl_buffer,
+			     KINECT_MOTOR_CTRL_BUFFER_SIZE,
+			     0);
     if (retval) {
       DBG_ERR("usb_control_msg failed (%d)", retval);
       goto unlock_exit;
@@ -262,7 +267,6 @@ unlock_exit:
 exit: 
     return retval;
 }
-    
 
 static struct file_operations kinect_motor_fops = {
     .owner =    THIS_MODULE,
